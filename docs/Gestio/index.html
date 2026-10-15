@@ -113,22 +113,9 @@ code{font-size:.78rem;background:var(--g100);padding:1px 5px;border-radius:4px}
 #saving-overlay.show{display:flex}
 #saving-box{background:#fff;border-radius:12px;padding:24px 32px;display:flex;align-items:center;gap:14px;font-size:.95rem;font-weight:500;color:var(--g700);box-shadow:0 10px 30px rgba(0,0,0,.2)}
 @media(max-width:860px){.cards{grid-template-columns:repeat(2,1fr)}.fr{grid-template-columns:1fr}}
-@media(max-width:768px){
-  #sb{transform:translateX(-100%);transition:transform .25s ease;z-index:300}
-  #sb.mob-open{transform:translateX(0)}
-  #main{margin-left:0}
-  #mob-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200}
-  #mob-overlay.show{display:block}
-  #mob-menu-btn{display:flex!important}
-  #topbar{padding:10px 14px}
-  #content{padding:14px}
-  .cards{grid-template-columns:repeat(2,1fr)}
-}
 </style>
 </head>
 <body>
-
-<div id="mob-overlay" onclick="closeSidebar()"></div>
 
 <!-- Overlay global "Desant..." -->
 <div id="saving-overlay">
@@ -151,15 +138,12 @@ code{font-size:.78rem;background:var(--g100);padding:1px 5px;border-radius:4px}
 
 <div id="main">
   <div id="topbar">
-    <div style="display:flex;align-items:center;gap:10px">
-      <button id="mob-menu-btn" class="btn btn-out btn-sm" onclick="toggleSidebar()" style="display:none;padding:6px 10px;font-size:1.1rem">☰</button>
-      <h1 id="ttl">Tauler</h1>
-    </div>
+    <h1 id="ttl">Tauler</h1>
     <div style="display:flex;gap:7px">
       <button class="btn btn-teal btn-sm" onclick="oImport()">⬆️ Importar CSV</button>
       <button class="btn btn-out btn-sm" onclick="exportCSV()">⬇️ Exportar CSV</button>
     </div>
-  </div><!-- /topbar -->
+  </div>
   <div id="content">
 
     <!-- DASHBOARD -->
@@ -486,49 +470,48 @@ code{font-size:.78rem;background:var(--g100);padding:1px 5px;border-radius:4px}
 // ── DB ──────────────────────────────────────────
 let db = { portatils: [], alumnes: [], prestecs: [] };
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzkIkpt9nVsla7qH-0t5me7ZkmGwWI2iNcH-GiOl0vSUkWIkjec0WkFdeXI3dDcztWInQ/exec';
-
-function gasCall(params, callback) {
-  var cbName = '_cb' + Date.now() + Math.random().toString(36).slice(2, 6);
-  var sId = '_gs_' + cbName;
-  window[cbName] = function(data) {
-    try { delete window[cbName]; } catch(e) {}
-    var s = document.getElementById(sId);
-    if (s) s.parentNode.removeChild(s);
-    callback(data);
-  };
-  var qs = Object.keys(params).map(function(k) {
-    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
-  }).join('&');
-  var s = document.createElement('script');
-  s.id = sId;
-  s.onerror = function() {
-    try { delete window[cbName]; } catch(e) {}
-    var s2 = document.getElementById(sId);
-    if (s2) s2.parentNode.removeChild(s2);
-    callback({ ok: false, msg: 'Error de connexió amb el servidor.' });
-  };
-  s.src = GAS_URL + '?callback=' + cbName + '&' + qs;
-  document.head.appendChild(s);
-}
-
 function lDB(callback) {
-  gasCall({ action: 'loadDB' }, function(resp) {
-    if (resp && resp.portatils) db = resp;
-    if (callback) callback();
-  });
+  google.script.run
+    .withSuccessHandler(function(raw) {
+      try { if (raw) db = JSON.parse(raw); } catch(e) {}
+      if (callback) callback();
+    })
+    .withFailureHandler(function(err) {
+      console.error('Error carregant DB:', err);
+      if (callback) callback();
+    })
+    .loadDB();
 }
 
+/**
+ * Desa només els registres indicats (upsert per ID) — molt més ràpid.
+ * @param {object|function} changes  { portatils:[...], alumnes:[...], prestecs:[...] }
+ *   Si es passa directament una funció (crida antiga), envia tota la DB (fallback).
+ * @param {function} [callback]
+ */
 function sDB(changes, callback) {
+  // Compatibilitat crida antiga sDB(callback) → full save (per a importació CSV)
+  if (typeof changes === 'function') {
+    callback = changes;
+    _sendSave('saveDB', JSON.stringify(db), callback);
+    return;
+  }
+  _sendSave('saveChanges', JSON.stringify(changes), callback);
+}
+
+function _sendSave(fnName, payload, callback) {
   document.getElementById('saving-overlay').classList.add('show');
-  gasCall({ action: 'saveChanges', data: JSON.stringify(changes) }, function(resp) {
-    document.getElementById('saving-overlay').classList.remove('show');
-    if (resp && resp.ok !== false) {
+  google.script.run
+    .withSuccessHandler(function() {
+      document.getElementById('saving-overlay').classList.remove('show');
       if (callback) callback();
-    } else {
-      alert('❌ Error desant les dades: ' + (resp && resp.msg ? resp.msg : 'Error desconegut'));
-    }
-  });
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('saving-overlay').classList.remove('show');
+      console.error('Error desant:', err);
+      alert('❌ Error desant les dades al full de càlcul:\n' + (err.message || String(err)));
+    })
+    [fnName](payload);
 }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -546,16 +529,6 @@ function bEst(e) {
   const [c, t] = m[e] || ['b-g', e]; return '<span class="badge ' + c + '">' + t + '</span>';
 }
 
-// ── SIDEBAR MÒBIL ───────────────────────────────
-function toggleSidebar() {
-  document.getElementById('sb').classList.toggle('mob-open');
-  document.getElementById('mob-overlay').classList.toggle('show');
-}
-function closeSidebar() {
-  document.getElementById('sb').classList.remove('mob-open');
-  document.getElementById('mob-overlay').classList.remove('show');
-}
-
 // ── NAV ─────────────────────────────────────────
 const TITLES = { dashboard: 'Tauler', peticions: 'Peticions de portàtil', inventari: 'Inventari de portàtils', alumnes: 'Alumnat', prestecs: 'Préstecs actius', historial: 'Historial', ficurs: 'Fi de curs', correus: 'Correus' };
 document.querySelectorAll('.nl').forEach(a => {
@@ -567,7 +540,6 @@ document.querySelectorAll('.nl').forEach(a => {
     document.getElementById('sec-' + s).classList.add('active');
     document.getElementById('ttl').textContent = TITLES[s];
     rSec(s);
-    closeSidebar();
   });
 });
 function rSec(s) {
@@ -760,27 +732,29 @@ function rCor() {
   document.getElementById('cor-empty').style.display   = 'none';
   document.getElementById('cor-main').style.display    = 'none';
 
-  gasCall({ action: 'loadPlantilles' }, function(resp) {
-    document.getElementById('cor-loading').style.display = 'none';
-    if (!resp || !resp.plantilles) {
-      document.getElementById('cor-err-msg').textContent = (resp && resp.msg) ? resp.msg : 'Error desconegut';
+  google.script.run
+    .withSuccessHandler(function(raw) {
+      try { tplsData = JSON.parse(raw); } catch(e) { tplsData = { assumpte: '', plantilles: [] }; }
+      document.getElementById('cor-loading').style.display = 'none';
+      if (!tplsData.plantilles.length) { document.getElementById('cor-empty').style.display = 'block'; return; }
+      if (!selTplId || !tplsData.plantilles.find(t => t.id === selTplId)) {
+        selTplId = tplsData.plantilles[0].id;
+        syncDest(tplsData.plantilles[0].dest);
+      }
+      rTplList();
+      const sel = document.getElementById('cor-alu');
+      sel.innerHTML = '<option value="">— Selecciona alumne/a —</option>' +
+        db.alumnes.map(a => '<option value="' + a.id + '">' + nC(a) + (a.curs ? ' (' + a.curs + (a.grup ? ' ' + a.grup : '') + ')' : '') + '</option>').join('');
+      if (corPreselAlu) { sel.value = corPreselAlu; corPreselAlu = null; }
+      document.getElementById('cor-main').style.display = 'block';
+      rEP();
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('cor-loading').style.display = 'none';
+      document.getElementById('cor-err-msg').textContent = err.message || String(err);
       document.getElementById('cor-error').style.display = 'block';
-      return;
-    }
-    tplsData = resp;
-    if (!tplsData.plantilles.length) { document.getElementById('cor-empty').style.display = 'block'; return; }
-    if (!selTplId || !tplsData.plantilles.find(t => t.id === selTplId)) {
-      selTplId = tplsData.plantilles[0].id;
-      syncDest(tplsData.plantilles[0].dest);
-    }
-    rTplList();
-    const sel = document.getElementById('cor-alu');
-    sel.innerHTML = '<option value="">— Selecciona alumne/a —</option>' +
-      db.alumnes.map(a => '<option value="' + a.id + '">' + nC(a) + (a.curs ? ' (' + a.curs + (a.grup ? ' ' + a.grup : '') + ')' : '') + '</option>').join('');
-    if (corPreselAlu) { sel.value = corPreselAlu; corPreselAlu = null; }
-    document.getElementById('cor-main').style.display = 'block';
-    rEP();
-  });
+    })
+    .loadPlantilles();
 }
 
 function rTplList() {
@@ -833,14 +807,16 @@ function enviarCorreu() {
   if (!selTplId || !aluId) { alert('Selecciona una plantilla i un alumne/a abans d\'enviar.'); return; }
   const btn = document.getElementById('btn-enviar');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Enviant...';
-  gasCall({ action: 'enviarCorreu', tplId: selTplId, aluId: aluId, dest: dest }, function(resp) {
-    btn.disabled = false; btn.innerHTML = '📨 Enviar ara';
-    if (resp && resp.ok !== undefined) {
-      alert(resp.ok ? '✅ ' + resp.msg : '⚠️ ' + resp.msg);
-    } else {
-      alert('✅ Correu enviat correctament.');
-    }
-  });
+  google.script.run
+    .withSuccessHandler(function(raw) {
+      btn.disabled = false; btn.innerHTML = '📨 Enviar ara';
+      try { const res = JSON.parse(raw); alert(res.ok ? '✅ ' + res.msg : '⚠️ ' + res.msg); } catch(e) { alert('✅ Correu enviat correctament.'); }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.innerHTML = '📨 Enviar ara';
+      alert('❌ Error en enviar el correu:\n' + (err.message || String(err)));
+    })
+    .enviarCorreuDirecte(selTplId, aluId, dest);
 }
 
 function copyEmail() {
@@ -1098,17 +1074,16 @@ function impConfirm() {
   const fields = IMP_FIELDS[imp.tipus];
   const req = fields.filter(f => f.req);
   let imported = 0, skip = 0;
-  const newAlumnes = [], newPortatils = [];
   imp.rows.forEach(row => {
     const miss = req.some(f => !imp.mapping[f.key] || !row[imp.mapping[f.key]]);
     if (miss) { skip++; return; }
     const rec = { id: uid() };
     fields.forEach(f => { if (imp.mapping[f.key]) rec[f.key] = (row[imp.mapping[f.key]] || '').trim(); });
-    if (imp.tipus === 'alumnes') { db.alumnes.push(rec); newAlumnes.push(rec); }
-    else { if (!rec.estat) rec.estat = 'disponible'; db.portatils.push(rec); newPortatils.push(rec); }
+    if (imp.tipus === 'alumnes') db.alumnes.push(rec);
+    else { if (!rec.estat) rec.estat = 'disponible'; db.portatils.push(rec); }
     imported++;
   });
-  sDB({ portatils: newPortatils, alumnes: newAlumnes, prestecs: [] }, () => {
+  sDB(() => {
     cM('mo-imp');
     setTimeout(() => {
       alert('✅ ' + imported + ' registres importats correctament.' + (skip ? '\n⚠️ ' + skip + ' files omeses per manca de dades obligatòries.' : ''));
@@ -1124,7 +1099,7 @@ function exportCSV() {
   db.prestecs.forEach(p => { const a = gA(p.aId), pc = gP(p.pId); rows.push([p.id, nC(a), a?.curs || '', a?.grup || '', pc ? pc.marca + ' ' + pc.model : '', pc?.sace || '', p.dataE || '', p.dataD || '', p.curs || '', p.estat]); });
   const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
   const el = document.createElement('a');
-  el.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  el.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
   el.download = 'prestec_portatils_' + today() + '.csv';
   el.click();
 }
@@ -1135,16 +1110,24 @@ function rPet() {
   document.getElementById('pet-error').style.display   = 'none';
   document.getElementById('pet-main').style.display    = 'none';
 
-  gasCall({ action: 'loadPeticions' }, function(resp) {
-    document.getElementById('pet-loading').style.display = 'none';
-    if (!resp || !resp.ok) {
-      document.getElementById('pet-err-msg').textContent = (resp && resp.msg) ? resp.msg : 'Error desconegut';
+  google.script.run
+    .withSuccessHandler(function(raw) {
+      var res; try { res = JSON.parse(raw); } catch(e) { res = { ok: false, msg: 'Error parsejant dades.' }; }
+      document.getElementById('pet-loading').style.display = 'none';
+      if (!res.ok) {
+        document.getElementById('pet-err-msg').textContent = res.msg;
+        document.getElementById('pet-error').style.display = 'block';
+        return;
+      }
+      rPetTable(res.data);
+      document.getElementById('pet-main').style.display = 'block';
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('pet-loading').style.display = 'none';
+      document.getElementById('pet-err-msg').textContent = err.message || String(err);
       document.getElementById('pet-error').style.display = 'block';
-      return;
-    }
-    rPetTable(resp.data);
-    document.getElementById('pet-main').style.display = 'block';
-  });
+    })
+    .loadPeticions();
 }
 
 function rPetTable(data) {
@@ -1252,31 +1235,47 @@ function enviarAccCondicions() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Enviant...';
 
-  gasCall({ action: 'enviarAccCondicions', alumnes: JSON.stringify(alumnes) }, function(resp) {
-    btn.disabled = false;
-    btn.innerHTML = '📨 Enviar AcceptarCondicions';
-    alert(resp.msg || (resp.ok ? '✅ Fet!' : '❌ Error'));
-    rPet();
-  });
+  google.script.run
+    .withSuccessHandler(function(raw) {
+      var res; try { res = JSON.parse(raw); } catch(e) { res = { ok: false, msg: 'Error parsejant resposta.' }; }
+      btn.disabled = false;
+      btn.innerHTML = '📨 Enviar AcceptarCondicions';
+      alert(res.msg || (res.ok ? '✅ Fet!' : '❌ Error'));
+      rPet();
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.innerHTML = '📨 Enviar AcceptarCondicions';
+      alert('❌ Error: ' + (err.message || String(err)));
+    })
+    .enviarAcceptarCondicionsLot(JSON.stringify(alumnes));
 }
 
 // ── SYNC ALUMNES ─────────────────────────────────
 function syncAlumnes(btn) {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span>';
-  gasCall({ action: 'syncRegistreManual' }, function(resp) {
-    btn.disabled = false;
-    btn.innerHTML = '🔄 Actualitzar';
-    if (resp && resp.ok) {
-      var msg = resp.copiats > 0
-        ? '✅ ' + resp.copiats + ' alumne' + (resp.copiats !== 1 ? 's' : '') + ' nou' + (resp.copiats !== 1 ? 's' : '') + ' afegit' + (resp.copiats !== 1 ? 's' : '') + ' correctament.'
-        : 'ℹ️ No hi ha alumnes nous per sincronitzar.';
-      alert(msg);
-      lDB(rAlu);
-    } else {
-      alert('❌ Error en sincronitzar: ' + ((resp && resp.msg) || 'Error desconegut'));
-    }
-  });
+  google.script.run
+    .withSuccessHandler(function(raw) {
+      var res; try { res = JSON.parse(raw); } catch(e) { res = { ok: false, msg: 'Error parsejant resposta.' }; }
+      btn.disabled = false;
+      btn.innerHTML = '🔄 Actualitzar';
+      if (res.ok) {
+        var msg = res.copiats > 0
+          ? '✅ ' + res.copiats + ' alumne' + (res.copiats !== 1 ? 's' : '') + ' nou' + (res.copiats !== 1 ? 's' : '') + ' afegit' + (res.copiats !== 1 ? 's' : '') + ' correctament.'
+          : 'ℹ️ No hi ha alumnes nous per sincronitzar.';
+        alert(msg);
+        lDB(rAlu);
+      } else {
+        alert('❌ Error en sincronitzar: ' + res.msg);
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.innerHTML = '🔄 Actualitzar';
+      alert('❌ Error: ' + (err.message || String(err)));
+    })
+    .syncRegistreManual();
 }
 
 // ── INIT ────────────────────────────────────────
