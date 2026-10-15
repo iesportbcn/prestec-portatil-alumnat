@@ -65,6 +65,17 @@ tr:hover td{background:var(--g50)}
 .pwd-t{font-family:monospace;background:var(--g100);padding:2px 7px;border-radius:4px;font-size:.78rem;display:none}
 .pwd-t.vis{display:inline}
 .pwd-w{display:flex;gap:5px;align-items:center}
+/* Cerca alumnes (correus) */
+.alu-dd{position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid var(--g200);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:200px;overflow-y:auto;z-index:200;display:none}
+.alu-dd-item{padding:8px 14px;cursor:pointer;font-size:.86rem;border-bottom:1px solid var(--g100)}
+.alu-dd-item:last-child{border-bottom:none}
+.alu-dd-item:hover{background:var(--pri-l);color:var(--pri-d)}
+/* Edició cos correu */
+.ep-edit-bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+/* Alumnes nous */
+.badge-nou{display:inline-block;background:#2563eb;color:#fff;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:20px;letter-spacing:.04em;vertical-align:middle;margin-left:6px}
+tr.fila-nova{background:#eff6ff}
+tr.fila-nova:hover{background:#dbeafe}
 /* Plantilla cards (correus) */
 .tc{background:#fff;border:2px solid var(--g200);border-radius:8px;padding:12px 14px;cursor:pointer;transition:all .15s;margin-bottom:7px}
 .tc:hover,.tc.sel{border-color:var(--pri);background:var(--pri-l)}
@@ -113,9 +124,23 @@ code{font-size:.78rem;background:var(--g100);padding:1px 5px;border-radius:4px}
 #saving-overlay.show{display:flex}
 #saving-box{background:#fff;border-radius:12px;padding:24px 32px;display:flex;align-items:center;gap:14px;font-size:.95rem;font-weight:500;color:var(--g700);box-shadow:0 10px 30px rgba(0,0,0,.2)}
 @media(max-width:860px){.cards{grid-template-columns:repeat(2,1fr)}.fr{grid-template-columns:1fr}}
+@media(max-width:768px){
+  #sb{transform:translateX(-100%);transition:transform .25s ease;z-index:300}
+  #sb.mob-open{transform:translateX(0)}
+  #main{margin-left:0}
+  #mob-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200}
+  #mob-overlay.show{display:block}
+  #mob-menu-btn{display:flex!important}
+  #topbar{padding:10px 14px}
+  #content{padding:14px}
+  .cards{grid-template-columns:repeat(2,1fr)}
+  #cor-main .cor-grid{grid-template-columns:1fr!important}
+}
 </style>
 </head>
 <body>
+
+<div id="mob-overlay" onclick="closeSidebar()"></div>
 
 <!-- Overlay global "Desant..." -->
 <div id="saving-overlay">
@@ -138,12 +163,15 @@ code{font-size:.78rem;background:var(--g100);padding:1px 5px;border-radius:4px}
 
 <div id="main">
   <div id="topbar">
-    <h1 id="ttl">Tauler</h1>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button id="mob-menu-btn" class="btn btn-out btn-sm" onclick="toggleSidebar()" style="display:none;padding:6px 10px;font-size:1.1rem">☰</button>
+      <h1 id="ttl">Tauler</h1>
+    </div>
     <div style="display:flex;gap:7px">
       <button class="btn btn-teal btn-sm" onclick="oImport()">⬆️ Importar CSV</button>
       <button class="btn btn-out btn-sm" onclick="exportCSV()">⬇️ Exportar CSV</button>
     </div>
-  </div>
+  </div><!-- /topbar -->
   <div id="content">
 
     <!-- DASHBOARD -->
@@ -268,21 +296,23 @@ code{font-size:.78rem;background:var(--g100);padding:1px 5px;border-radius:4px}
         <div style="text-align:center;margin-top:8px"><button class="btn btn-out btn-sm" onclick="rCor()">🔄 Recarregar</button></div>
       </div>
       <div id="cor-main" style="display:none">
-        <div style="display:grid;grid-template-columns:250px 1fr;gap:20px;align-items:start">
+        <div class="cor-grid" style="display:grid;grid-template-columns:250px 1fr;gap:20px;align-items:start">
           <div>
             <div class="sec-lbl">Plantilles</div>
             <div id="tpl-list"></div>
-            <div style="margin-top:10px">
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+              <button class="btn btn-out btn-sm" style="width:100%;justify-content:center" onclick="editarPlantilla()">📝 Editar plantilla</button>
               <button class="btn btn-out btn-sm" style="width:100%;justify-content:center" onclick="rCor()">🔄 Actualitzar</button>
             </div>
           </div>
           <div>
             <div class="fr" style="margin-bottom:14px">
-              <div class="fg" style="margin:0">
+              <div class="fg" style="margin:0;position:relative">
                 <label>Alumne/a *</label>
-                <select class="sel" id="cor-alu" onchange="rEP()">
-                  <option value="">— Selecciona alumne/a —</option>
-                </select>
+                <input class="inp" id="cor-alu-q" placeholder="🔍 Cerca alumne/a..." autocomplete="off"
+                  oninput="filtrarAluCor()" onfocus="mostrarAluCor()" onblur="setTimeout(()=>document.getElementById('cor-alu-dd').style.display='none',160)">
+                <input type="hidden" id="cor-alu">
+                <div class="alu-dd" id="cor-alu-dd"></div>
               </div>
               <div class="fg" style="margin:0">
                 <label>Destinatari</label>
@@ -304,15 +334,33 @@ code{font-size:.78rem;background:var(--g100);padding:1px 5px;border-radius:4px}
                 <span class="ep-empty">Selecciona una plantilla i un alumne/a per veure la previsualització.</span>
               </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div id="ep-edit-bar" class="ep-edit-bar" style="display:none">
+              <button class="btn btn-teal btn-sm" onclick="usarNomesAra()">✅ Usar sols ara</button>
+              <button class="btn btn-out btn-sm" onclick="cancelEdicio()">✕ Cancel·lar edició</button>
+            </div>
+            <div id="ep-action-bar" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
               <button class="btn btn-pri" id="btn-enviar" onclick="enviarCorreu()">📨 Enviar ara</button>
               <button class="btn btn-out btn-sm" onclick="copyEmail()">📋 Copiar text</button>
+              <button class="btn btn-out btn-sm" id="btn-editar-cos" onclick="activarEdicioCos()" style="display:none">✏️ Editar per enviar</button>
             </div>
           </div>
         </div>
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ═══ MODAL editar plantilla ═══ -->
+<div class="mo" id="mo-tpl">
+  <div class="mb">
+    <div class="mh"><h3 id="mtpl-ttl">Editar plantilla</h3><button class="mc" onclick="cM('mo-tpl')">×</button></div>
+    <div class="alert al-info" style="margin-bottom:14px;font-size:.82rem">Pots usar <strong>{{nombreAlumno}}</strong>, <strong>{{correoAlumno}}</strong>, <strong>{{nombreTutor}}</strong>, <strong>{{correoTutor}}</strong>, <strong>{{Dadesportatils}}</strong>. Pots escriure HTML.</div>
+    <div class="fg"><label>Cos de la plantilla</label><textarea class="ta" id="mtpl-cos" rows="12" style="font-family:monospace;font-size:.82rem"></textarea></div>
+    <div class="mf">
+      <button class="btn btn-out" onclick="cM('mo-tpl')">Cancel·lar</button>
+      <button class="btn btn-pri" onclick="desarPlantilla()">💾 Desar plantilla</button>
+    </div>
   </div>
 </div>
 
@@ -470,48 +518,49 @@ code{font-size:.78rem;background:var(--g100);padding:1px 5px;border-radius:4px}
 // ── DB ──────────────────────────────────────────
 let db = { portatils: [], alumnes: [], prestecs: [] };
 
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzkIkpt9nVsla7qH-0t5me7ZkmGwWI2iNcH-GiOl0vSUkWIkjec0WkFdeXI3dDcztWInQ/exec';
+
+function gasCall(params, callback) {
+  var cbName = '_cb' + Date.now() + Math.random().toString(36).slice(2, 6);
+  var sId = '_gs_' + cbName;
+  window[cbName] = function(data) {
+    try { delete window[cbName]; } catch(e) {}
+    var s = document.getElementById(sId);
+    if (s) s.parentNode.removeChild(s);
+    callback(data);
+  };
+  var qs = Object.keys(params).map(function(k) {
+    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+  }).join('&');
+  var s = document.createElement('script');
+  s.id = sId;
+  s.onerror = function() {
+    try { delete window[cbName]; } catch(e) {}
+    var s2 = document.getElementById(sId);
+    if (s2) s2.parentNode.removeChild(s2);
+    callback({ ok: false, msg: 'Error de connexió amb el servidor.' });
+  };
+  s.src = GAS_URL + '?callback=' + cbName + '&' + qs;
+  document.head.appendChild(s);
+}
+
 function lDB(callback) {
-  google.script.run
-    .withSuccessHandler(function(raw) {
-      try { if (raw) db = JSON.parse(raw); } catch(e) {}
-      if (callback) callback();
-    })
-    .withFailureHandler(function(err) {
-      console.error('Error carregant DB:', err);
-      if (callback) callback();
-    })
-    .loadDB();
+  gasCall({ action: 'loadDB' }, function(resp) {
+    if (resp && resp.portatils) db = resp;
+    if (callback) callback();
+  });
 }
 
-/**
- * Desa només els registres indicats (upsert per ID) — molt més ràpid.
- * @param {object|function} changes  { portatils:[...], alumnes:[...], prestecs:[...] }
- *   Si es passa directament una funció (crida antiga), envia tota la DB (fallback).
- * @param {function} [callback]
- */
 function sDB(changes, callback) {
-  // Compatibilitat crida antiga sDB(callback) → full save (per a importació CSV)
-  if (typeof changes === 'function') {
-    callback = changes;
-    _sendSave('saveDB', JSON.stringify(db), callback);
-    return;
-  }
-  _sendSave('saveChanges', JSON.stringify(changes), callback);
-}
-
-function _sendSave(fnName, payload, callback) {
   document.getElementById('saving-overlay').classList.add('show');
-  google.script.run
-    .withSuccessHandler(function() {
-      document.getElementById('saving-overlay').classList.remove('show');
+  gasCall({ action: 'saveChanges', data: JSON.stringify(changes) }, function(resp) {
+    document.getElementById('saving-overlay').classList.remove('show');
+    if (resp && resp.ok !== false) {
       if (callback) callback();
-    })
-    .withFailureHandler(function(err) {
-      document.getElementById('saving-overlay').classList.remove('show');
-      console.error('Error desant:', err);
-      alert('❌ Error desant les dades al full de càlcul:\n' + (err.message || String(err)));
-    })
-    [fnName](payload);
+    } else {
+      alert('❌ Error desant les dades: ' + (resp && resp.msg ? resp.msg : 'Error desconegut'));
+    }
+  });
 }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -529,6 +578,16 @@ function bEst(e) {
   const [c, t] = m[e] || ['b-g', e]; return '<span class="badge ' + c + '">' + t + '</span>';
 }
 
+// ── SIDEBAR MÒBIL ───────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sb').classList.toggle('mob-open');
+  document.getElementById('mob-overlay').classList.toggle('show');
+}
+function closeSidebar() {
+  document.getElementById('sb').classList.remove('mob-open');
+  document.getElementById('mob-overlay').classList.remove('show');
+}
+
 // ── NAV ─────────────────────────────────────────
 const TITLES = { dashboard: 'Tauler', peticions: 'Peticions de portàtil', inventari: 'Inventari de portàtils', alumnes: 'Alumnat', prestecs: 'Préstecs actius', historial: 'Historial', ficurs: 'Fi de curs', correus: 'Correus' };
 document.querySelectorAll('.nl').forEach(a => {
@@ -540,6 +599,7 @@ document.querySelectorAll('.nl').forEach(a => {
     document.getElementById('sec-' + s).classList.add('active');
     document.getElementById('ttl').textContent = TITLES[s];
     rSec(s);
+    closeSidebar();
   });
 });
 function rSec(s) {
@@ -597,16 +657,19 @@ function tPwd(id) { document.getElementById('pw-' + id)?.classList.toggle('vis')
 // ── ALUMNAT ─────────────────────────────────────
 function rAlu() {
   const q = (document.getElementById('alu-q')?.value || '').toLowerCase();
-  const list = db.alumnes.filter(a => (a.nom + ' ' + a.cog + ' ' + (a.curs || '') + ' ' + (a.email || '')).toLowerCase().includes(q));
+  let list = db.alumnes.filter(a => (a.nom + ' ' + a.cog + ' ' + (a.curs || '') + ' ' + (a.email || '')).toLowerCase().includes(q));
   if (!list.length) { document.getElementById('alu-t').innerHTML = '<div class="es"><div class="ei">👨‍🎓</div><p>' + (db.alumnes.length ? 'Cap resultat.' : 'Afegeix alumnes manualment o importa un CSV.') + '</p></div>'; return; }
+  list = [...list.filter(a => a.nou === 'NOU'), ...list.filter(a => a.nou !== 'NOU')];
   let rows = '';
   list.forEach(a => {
+    const esNou = a.nou === 'NOU';
     const pr = db.prestecs.find(p => p.aId === a.id && p.estat === 'actiu');
     const pc = pr ? gP(pr.pId) : null;
+    const nomTxt = '<strong>' + nC(a) + '</strong>' + (esNou ? '<span class="badge-nou">NOU</span>' : '');
     const cont = a.email ? '<a href="mailto:' + a.email + '" style="color:var(--pri)">' + a.email + '</a>' : '<span style="color:var(--g400);font-size:.8rem">—</span>';
     const tutTxt = '<span style="font-size:.8rem">' + (a.tnom || '—') + '<br><span style="color:var(--g400)">' + (a.temail || '') + '</span></span>';
     const pcTxt = pc ? '<span class="badge b-pri">' + pL(pc) + '</span>' : '<span style="color:var(--g400);font-size:.8rem">Cap</span>';
-    rows += '<tr><td><strong>' + nC(a) + '</strong></td><td style="font-size:.82rem">' + (a.curs || '—') + (a.grup ? ' · ' + a.grup : '') + '</td><td>' + cont + '</td><td>' + tutTxt + '</td><td>' + pcTxt + '</td><td><div style="display:flex;gap:4px"><button class="btn btn-out btn-sm" onclick="oMA(\'' + a.id + '\')">✏️</button></div></td></tr>';
+    rows += '<tr class="' + (esNou ? 'fila-nova' : '') + '"><td>' + nomTxt + '</td><td style="font-size:.82rem">' + (a.curs || '—') + (a.grup ? ' · ' + a.grup : '') + '</td><td>' + cont + '</td><td>' + tutTxt + '</td><td>' + pcTxt + '</td><td><div style="display:flex;gap:4px"><button class="btn btn-out btn-sm" onclick="oMA(\'' + a.id + '\')">✏️</button></div></td></tr>';
   });
   document.getElementById('alu-t').innerHTML = '<table><thead><tr><th>Nom complet</th><th>Curs / Grup</th><th>Correu electrònic</th><th>Tutor/a</th><th>Portàtil assignat</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
@@ -683,8 +746,11 @@ function sFCEdit() {
 //  CORREUS
 // ══════════════════════════════════════════════════════════════
 
-let tplsData = { assumpte: '', plantilles: [] };
-let selTplId  = null;
+let tplsData    = { assumpte: '', plantilles: [] };
+let selTplId    = null;
+let aluCatalog  = [];
+let customCorpus = null;
+let cosOriginal  = '';
 let corPreselAlu = null;
 let petData = [];
 
@@ -732,29 +798,29 @@ function rCor() {
   document.getElementById('cor-empty').style.display   = 'none';
   document.getElementById('cor-main').style.display    = 'none';
 
-  google.script.run
-    .withSuccessHandler(function(raw) {
-      try { tplsData = JSON.parse(raw); } catch(e) { tplsData = { assumpte: '', plantilles: [] }; }
-      document.getElementById('cor-loading').style.display = 'none';
-      if (!tplsData.plantilles.length) { document.getElementById('cor-empty').style.display = 'block'; return; }
-      if (!selTplId || !tplsData.plantilles.find(t => t.id === selTplId)) {
-        selTplId = tplsData.plantilles[0].id;
-        syncDest(tplsData.plantilles[0].dest);
-      }
-      rTplList();
-      const sel = document.getElementById('cor-alu');
-      sel.innerHTML = '<option value="">— Selecciona alumne/a —</option>' +
-        db.alumnes.map(a => '<option value="' + a.id + '">' + nC(a) + (a.curs ? ' (' + a.curs + (a.grup ? ' ' + a.grup : '') + ')' : '') + '</option>').join('');
-      if (corPreselAlu) { sel.value = corPreselAlu; corPreselAlu = null; }
-      document.getElementById('cor-main').style.display = 'block';
-      rEP();
-    })
-    .withFailureHandler(function(err) {
-      document.getElementById('cor-loading').style.display = 'none';
-      document.getElementById('cor-err-msg').textContent = err.message || String(err);
+  gasCall({ action: 'loadPlantilles' }, function(resp) {
+    document.getElementById('cor-loading').style.display = 'none';
+    if (!resp || !resp.plantilles) {
+      document.getElementById('cor-err-msg').textContent = (resp && resp.msg) ? resp.msg : 'Error desconegut';
       document.getElementById('cor-error').style.display = 'block';
-    })
-    .loadPlantilles();
+      return;
+    }
+    tplsData = resp;
+    if (!tplsData.plantilles.length) { document.getElementById('cor-empty').style.display = 'block'; return; }
+    if (!selTplId || !tplsData.plantilles.find(t => t.id === selTplId)) {
+      selTplId = tplsData.plantilles[0].id;
+      syncDest(tplsData.plantilles[0].dest);
+    }
+    rTplList();
+    aluCatalog = db.alumnes.slice();
+    if (corPreselAlu) {
+      const a = gA(corPreselAlu);
+      if (a) { document.getElementById('cor-alu').value = corPreselAlu; document.getElementById('cor-alu-q').value = nC(a); }
+      corPreselAlu = null;
+    }
+    document.getElementById('cor-main').style.display = 'block';
+    rEP();
+  });
 }
 
 function rTplList() {
@@ -768,7 +834,85 @@ function sTpl(id) {
   selTplId = id;
   const tpl = tplsData.plantilles.find(t => t.id === id);
   if (tpl) syncDest(tpl.dest);
+  cancelEdicio();
   rTplList(); rEP();
+}
+
+// ── CERCA ALUMNES (correus) ──────────────────────
+function filtrarAluCor() { mostrarAluCor(); }
+function mostrarAluCor() {
+  const q = (document.getElementById('cor-alu-q').value || '').toLowerCase().trim();
+  const dd = document.getElementById('cor-alu-dd');
+  const list = q
+    ? aluCatalog.filter(a => (a.nom + ' ' + a.cog + ' ' + (a.curs || '') + ' ' + (a.email || '')).toLowerCase().includes(q))
+    : aluCatalog;
+  if (!list.length) {
+    dd.innerHTML = '<div class="alu-dd-item" style="color:var(--g400)">Cap resultat</div>';
+    dd.style.display = 'block'; return;
+  }
+  dd.innerHTML = list.slice(0, 40).map(a =>
+    '<div class="alu-dd-item" onmousedown="selAluCor(\'' + escQ(a.id) + '\',\'' + escQ(nC(a)) + '\')">' +
+    escH(nC(a)) + (a.curs ? ' <span style="color:var(--g400);font-size:.78rem">(' + escH(a.curs) + (a.grup ? ' ' + escH(a.grup) : '') + ')</span>' : '') +
+    '</div>'
+  ).join('');
+  dd.style.display = 'block';
+}
+function selAluCor(id, nom) {
+  document.getElementById('cor-alu').value = id;
+  document.getElementById('cor-alu-q').value = nom;
+  document.getElementById('cor-alu-dd').style.display = 'none';
+  rEP();
+}
+
+// ── EDICIÓ COS CORREU ────────────────────────────
+function activarEdicioCos() {
+  const view = document.getElementById('ep-view');
+  if (view.querySelector('.ep-empty')) return;
+  cosOriginal = view.innerHTML;
+  view.contentEditable = 'true';
+  view.style.outline = '2px solid var(--pri)';
+  view.focus();
+  document.getElementById('ep-edit-bar').style.display = 'flex';
+  document.getElementById('ep-action-bar').style.display = 'none';
+}
+function cancelEdicio() {
+  const view = document.getElementById('ep-view');
+  view.contentEditable = 'false';
+  view.style.outline = '';
+  if (cosOriginal) { view.innerHTML = cosOriginal; cosOriginal = ''; }
+  customCorpus = null;
+  document.getElementById('ep-edit-bar').style.display = 'none';
+  document.getElementById('ep-action-bar').style.display = 'flex';
+}
+function usarNomesAra() {
+  customCorpus = document.getElementById('ep-view').innerHTML;
+  cancelEdicio();
+  document.getElementById('ep-view').innerHTML = customCorpus;
+  document.getElementById('ep-action-bar').style.display = 'flex';
+}
+function editarPlantilla() {
+  if (!selTplId) { alert('Selecciona primer una plantilla.'); return; }
+  const tpl = tplsData.plantilles.find(t => t.id === selTplId);
+  if (!tpl) return;
+  document.getElementById('mtpl-ttl').textContent = 'Editar plantilla: ' + selTplId;
+  document.getElementById('mtpl-cos').value = tpl.cos || '';
+  document.getElementById('mo-tpl').classList.add('open');
+}
+function desarPlantilla() {
+  const cos = document.getElementById('mtpl-cos').value;
+  const btn = document.querySelector('#mo-tpl .btn-pri');
+  btn.disabled = true; btn.textContent = 'Desant...';
+  gasCall({ action: 'guardarPlantilla', tplId: selTplId, cos: cos }, function(resp) {
+    btn.disabled = false; btn.textContent = '💾 Desar plantilla';
+    if (resp && resp.ok) {
+      const tpl = tplsData.plantilles.find(t => t.id === selTplId);
+      if (tpl) tpl.cos = cos;
+      cM('mo-tpl');
+      rEP();
+    } else {
+      alert('Error desant la plantilla: ' + (resp && resp.msg ? resp.msg : 'Error desconegut'));
+    }
+  });
 }
 
 function rEP() {
@@ -790,7 +934,9 @@ function rEP() {
   const subEl = document.getElementById('ep-sub');
   subEl.textContent = subRendered || '(sense assumpte)';
   subEl.className   = 'ep-sub-val' + (!subRendered ? ' ep-empty' : '');
+  customCorpus = null;
   document.getElementById('ep-view').innerHTML = cosRendered || '<span class="ep-empty">El cos de la plantilla és buit.</span>';
+  document.getElementById('btn-editar-cos').style.display = cosRendered ? 'inline-flex' : 'none';
   const warnings = [], destLines = [], dNorm = dest.toLowerCase();
   if (dNorm === 'alumnat' || dNorm === 'ambdós') { if (a.email) destLines.push('👨‍🎓 <strong>' + escH(nC(a)) + '</strong> &lt;' + escH(a.email) + '&gt;'); else warnings.push('⚠️ L\'alumne/a <strong>' + escH(nC(a)) + '</strong> no té correu electrònic definit.'); }
   if (dNorm === 'coach' || dNorm === 'ambdós') { if (a.temail) destLines.push('👤 <strong>' + escH(a.tnom || 'Tutor/a') + '</strong> &lt;' + escH(a.temail) + '&gt;'); else warnings.push('⚠️ El tutor/a de <strong>' + escH(nC(a)) + '</strong> no té correu electrònic definit.'); }
@@ -807,16 +953,17 @@ function enviarCorreu() {
   if (!selTplId || !aluId) { alert('Selecciona una plantilla i un alumne/a abans d\'enviar.'); return; }
   const btn = document.getElementById('btn-enviar');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Enviant...';
-  google.script.run
-    .withSuccessHandler(function(raw) {
-      btn.disabled = false; btn.innerHTML = '📨 Enviar ara';
-      try { const res = JSON.parse(raw); alert(res.ok ? '✅ ' + res.msg : '⚠️ ' + res.msg); } catch(e) { alert('✅ Correu enviat correctament.'); }
-    })
-    .withFailureHandler(function(err) {
-      btn.disabled = false; btn.innerHTML = '📨 Enviar ara';
-      alert('❌ Error en enviar el correu:\n' + (err.message || String(err)));
-    })
-    .enviarCorreuDirecte(selTplId, aluId, dest);
+  const params = { action: 'enviarCorreu', tplId: selTplId, aluId: aluId, dest: dest };
+  if (customCorpus) params.customBody = customCorpus;
+  gasCall(params, function(resp) {
+    btn.disabled = false; btn.innerHTML = '📨 Enviar ara';
+    customCorpus = null;
+    if (resp && resp.ok !== undefined) {
+      alert(resp.ok ? '✅ ' + resp.msg : '⚠️ ' + resp.msg);
+    } else {
+      alert('✅ Correu enviat correctament.');
+    }
+  });
 }
 
 function copyEmail() {
@@ -859,8 +1006,27 @@ function sP() {
 }
 
 function oMA(id) {
-  if (id) { const a = gA(id); document.getElementById('ma-ttl').textContent = 'Editar alumne/a'; document.getElementById('ma-id').value = id; document.getElementById('ma-nom').value = a.nom || ''; document.getElementById('ma-cog').value = a.cog || ''; document.getElementById('ma-curs').value = a.curs || ''; document.getElementById('ma-grup').value = a.grup || ''; document.getElementById('ma-email').value = a.email || ''; document.getElementById('ma-tnom').value = a.tnom || ''; document.getElementById('ma-temail').value = a.temail || ''; }
-  else { document.getElementById('ma-ttl').textContent = 'Nou alumne/a'; document.getElementById('ma-id').value = ''; ['ma-nom', 'ma-cog', 'ma-curs', 'ma-grup', 'ma-email', 'ma-tnom', 'ma-temail'].forEach(f => document.getElementById(f).value = ''); }
+  if (id) {
+    const a = gA(id);
+    document.getElementById('ma-ttl').textContent = 'Editar alumne/a';
+    document.getElementById('ma-id').value = id;
+    document.getElementById('ma-nom').value = a.nom || '';
+    document.getElementById('ma-cog').value = a.cog || '';
+    document.getElementById('ma-curs').value = a.curs || '';
+    document.getElementById('ma-grup').value = a.grup || '';
+    document.getElementById('ma-email').value = a.email || '';
+    document.getElementById('ma-tnom').value = a.tnom || '';
+    document.getElementById('ma-temail').value = a.temail || '';
+    if (a.nou === 'NOU') {
+      a.nou = '';
+      gasCall({ action: 'marcarVist', id: id }, function() {});
+      rAlu();
+    }
+  } else {
+    document.getElementById('ma-ttl').textContent = 'Nou alumne/a';
+    document.getElementById('ma-id').value = '';
+    ['ma-nom', 'ma-cog', 'ma-curs', 'ma-grup', 'ma-email', 'ma-tnom', 'ma-temail'].forEach(f => document.getElementById(f).value = '');
+  }
   document.getElementById('mo-a').classList.add('open');
 }
 
@@ -1074,16 +1240,17 @@ function impConfirm() {
   const fields = IMP_FIELDS[imp.tipus];
   const req = fields.filter(f => f.req);
   let imported = 0, skip = 0;
+  const newAlumnes = [], newPortatils = [];
   imp.rows.forEach(row => {
     const miss = req.some(f => !imp.mapping[f.key] || !row[imp.mapping[f.key]]);
     if (miss) { skip++; return; }
     const rec = { id: uid() };
     fields.forEach(f => { if (imp.mapping[f.key]) rec[f.key] = (row[imp.mapping[f.key]] || '').trim(); });
-    if (imp.tipus === 'alumnes') db.alumnes.push(rec);
-    else { if (!rec.estat) rec.estat = 'disponible'; db.portatils.push(rec); }
+    if (imp.tipus === 'alumnes') { db.alumnes.push(rec); newAlumnes.push(rec); }
+    else { if (!rec.estat) rec.estat = 'disponible'; db.portatils.push(rec); newPortatils.push(rec); }
     imported++;
   });
-  sDB(() => {
+  sDB({ portatils: newPortatils, alumnes: newAlumnes, prestecs: [] }, () => {
     cM('mo-imp');
     setTimeout(() => {
       alert('✅ ' + imported + ' registres importats correctament.' + (skip ? '\n⚠️ ' + skip + ' files omeses per manca de dades obligatòries.' : ''));
@@ -1099,7 +1266,7 @@ function exportCSV() {
   db.prestecs.forEach(p => { const a = gA(p.aId), pc = gP(p.pId); rows.push([p.id, nC(a), a?.curs || '', a?.grup || '', pc ? pc.marca + ' ' + pc.model : '', pc?.sace || '', p.dataE || '', p.dataD || '', p.curs || '', p.estat]); });
   const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
   const el = document.createElement('a');
-  el.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+  el.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
   el.download = 'prestec_portatils_' + today() + '.csv';
   el.click();
 }
@@ -1110,24 +1277,16 @@ function rPet() {
   document.getElementById('pet-error').style.display   = 'none';
   document.getElementById('pet-main').style.display    = 'none';
 
-  google.script.run
-    .withSuccessHandler(function(raw) {
-      var res; try { res = JSON.parse(raw); } catch(e) { res = { ok: false, msg: 'Error parsejant dades.' }; }
-      document.getElementById('pet-loading').style.display = 'none';
-      if (!res.ok) {
-        document.getElementById('pet-err-msg').textContent = res.msg;
-        document.getElementById('pet-error').style.display = 'block';
-        return;
-      }
-      rPetTable(res.data);
-      document.getElementById('pet-main').style.display = 'block';
-    })
-    .withFailureHandler(function(err) {
-      document.getElementById('pet-loading').style.display = 'none';
-      document.getElementById('pet-err-msg').textContent = err.message || String(err);
+  gasCall({ action: 'loadPeticions' }, function(resp) {
+    document.getElementById('pet-loading').style.display = 'none';
+    if (!resp || !resp.ok) {
+      document.getElementById('pet-err-msg').textContent = (resp && resp.msg) ? resp.msg : 'Error desconegut';
       document.getElementById('pet-error').style.display = 'block';
-    })
-    .loadPeticions();
+      return;
+    }
+    rPetTable(resp.data);
+    document.getElementById('pet-main').style.display = 'block';
+  });
 }
 
 function rPetTable(data) {
@@ -1235,47 +1394,31 @@ function enviarAccCondicions() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Enviant...';
 
-  google.script.run
-    .withSuccessHandler(function(raw) {
-      var res; try { res = JSON.parse(raw); } catch(e) { res = { ok: false, msg: 'Error parsejant resposta.' }; }
-      btn.disabled = false;
-      btn.innerHTML = '📨 Enviar AcceptarCondicions';
-      alert(res.msg || (res.ok ? '✅ Fet!' : '❌ Error'));
-      rPet();
-    })
-    .withFailureHandler(function(err) {
-      btn.disabled = false;
-      btn.innerHTML = '📨 Enviar AcceptarCondicions';
-      alert('❌ Error: ' + (err.message || String(err)));
-    })
-    .enviarAcceptarCondicionsLot(JSON.stringify(alumnes));
+  gasCall({ action: 'enviarAccCondicions', alumnes: JSON.stringify(alumnes) }, function(resp) {
+    btn.disabled = false;
+    btn.innerHTML = '📨 Enviar AcceptarCondicions';
+    alert(resp.msg || (resp.ok ? '✅ Fet!' : '❌ Error'));
+    rPet();
+  });
 }
 
 // ── SYNC ALUMNES ─────────────────────────────────
 function syncAlumnes(btn) {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span>';
-  google.script.run
-    .withSuccessHandler(function(raw) {
-      var res; try { res = JSON.parse(raw); } catch(e) { res = { ok: false, msg: 'Error parsejant resposta.' }; }
-      btn.disabled = false;
-      btn.innerHTML = '🔄 Actualitzar';
-      if (res.ok) {
-        var msg = res.copiats > 0
-          ? '✅ ' + res.copiats + ' alumne' + (res.copiats !== 1 ? 's' : '') + ' nou' + (res.copiats !== 1 ? 's' : '') + ' afegit' + (res.copiats !== 1 ? 's' : '') + ' correctament.'
-          : 'ℹ️ No hi ha alumnes nous per sincronitzar.';
-        alert(msg);
-        lDB(rAlu);
-      } else {
-        alert('❌ Error en sincronitzar: ' + res.msg);
-      }
-    })
-    .withFailureHandler(function(err) {
-      btn.disabled = false;
-      btn.innerHTML = '🔄 Actualitzar';
-      alert('❌ Error: ' + (err.message || String(err)));
-    })
-    .syncRegistreManual();
+  gasCall({ action: 'syncRegistreManual' }, function(resp) {
+    btn.disabled = false;
+    btn.innerHTML = '🔄 Actualitzar';
+    if (resp && resp.ok) {
+      var msg = resp.copiats > 0
+        ? '✅ ' + resp.copiats + ' alumne' + (resp.copiats !== 1 ? 's' : '') + ' nou' + (resp.copiats !== 1 ? 's' : '') + ' afegit' + (resp.copiats !== 1 ? 's' : '') + ' correctament.'
+        : 'ℹ️ No hi ha alumnes nous per sincronitzar.';
+      alert(msg);
+      lDB(rAlu);
+    } else {
+      alert('❌ Error en sincronitzar: ' + ((resp && resp.msg) || 'Error desconegut'));
+    }
+  });
 }
 
 // ── INIT ────────────────────────────────────────
